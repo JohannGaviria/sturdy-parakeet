@@ -1,18 +1,9 @@
 name: Release
 
-# Opt-in on purpose. This template ships the release pipeline so projects can
-# reuse it, but a fresh clone has no RELEASE_TOKEN, so running it automatically
-# on every push to main would only fail. A project enables it by switching the
-# trigger below to:
-#
-#   workflow_run:
-#     workflows: ["CI Pipeline"]
-#     types: [completed]
-#     branches: [main]
-#
-# and creating the RELEASE_TOKEN secret.
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 concurrency:
   group: release-main
@@ -35,7 +26,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-          token: ${{ secrets.RELEASE_TOKEN }}
+          token: ${{ secrets.RELEASE_TOKEN_STURDY_PARAKEET }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -59,5 +50,5 @@ jobs:
 
       - name: Run semantic-release
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN_STURDY_PARAKEET }}
         run: npx semantic-release

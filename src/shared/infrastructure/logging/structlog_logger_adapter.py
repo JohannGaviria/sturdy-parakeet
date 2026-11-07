@@ -1,7 +1,9 @@
 import structlog
 
+from src.shared.domain.ports import LoggerPort
 
-class StructlogLogger:
+
+class StructlogLoggerAdapter(LoggerPort):
     """Concrete logger backed by structlog.
 
     Wraps a structlog bound-logger so every call is routed through the
@@ -14,7 +16,7 @@ class StructlogLogger:
 
     Usage::
 
-        logger = StructlogLogger(__name__)
+        logger = StructlogLoggerAdapter(__name__)
         logger.info("user_created", user_id=str(user.id))
     """
 
