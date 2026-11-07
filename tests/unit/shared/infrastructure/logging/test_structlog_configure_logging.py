@@ -10,7 +10,9 @@ import structlog
 from src.shared.infrastructure.logging.structlog_configure_logging import (
     StructlogConfigureLogging,
 )
-from src.shared.infrastructure.logging.structlog_logger import StructlogLogger
+from src.shared.infrastructure.logging.structlog_logger_adapter import (
+    StructlogLoggerAdapter,
+)
 
 NOISY_LOGGERS = ("uvicorn.access", "watchfiles.main")
 
@@ -100,7 +102,7 @@ class TestLevels:
     ) -> None:
         logs = capture(debug=False)
 
-        StructlogLogger("src.tests").debug("should be filtered out")
+        StructlogLoggerAdapter("src.tests").debug("should be filtered out")
 
         assert logs.raw == ""
 
@@ -109,7 +111,7 @@ class TestLevels:
     ) -> None:
         logs = capture(debug=True)
 
-        StructlogLogger("src.tests").debug("kept")
+        StructlogLoggerAdapter("src.tests").debug("kept")
 
         assert logs.record()["event"] == "kept"
 
@@ -147,7 +149,7 @@ class TestRendering:
     ) -> None:
         logs = capture()
 
-        StructlogLogger("src.tests").info("user_created", user_id="42")
+        StructlogLoggerAdapter("src.tests").info("user_created", user_id="42")
 
         record = logs.record()
         assert record["event"] == "user_created"
@@ -174,7 +176,7 @@ class TestRendering:
         logs = capture()
         structlog.contextvars.bind_contextvars(correlation_id="abc-123")
 
-        StructlogLogger("src.tests").info("request_finished")
+        StructlogLoggerAdapter("src.tests").info("request_finished")
 
         assert logs.record()["correlation_id"] == "abc-123"
 

@@ -1,7 +1,7 @@
 [project]
-name = "python-backend-starter"
+name = "sturdy-parakeet"
 version = "1.0.0"
-description = "Reusable Python backend starter template with Docker, PostgreSQL, Redis, testing, and code quality tooling."
+description = "Multi-tenant REST API to administer sports complexes and manage the availability and booking of their zones."
 authors = [
     {name = "JohannGaviria", email = "johannmgr@gmail.com"}
 ]
