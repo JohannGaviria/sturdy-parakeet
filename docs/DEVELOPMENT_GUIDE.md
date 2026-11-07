@@ -1,6 +1,6 @@
 # Development Guide
  
-> Guide with the steps needed to run the project in a local environment: dependency installation, running the application with and without Docker, database migrations, cache management and code quality checks.
+> Guide with the steps needed to run Sturdy Parakeet in a local environment: dependency installation, running the application with and without Docker, database migrations, cache management and code quality checks.
 
 ## Table of Contents
 
@@ -35,8 +35,8 @@
 ## Cloning the Repository
 
 ```shell
-git clone git@github.com/JohannGaviria/project-name.git
-cd project-name
+git clone git@github.com:JohannGaviria/sturdy-parakeet.git
+cd sturdy-parakeet
 ```
 
 Copy the environment variables file and fill in the local values:
@@ -45,47 +45,49 @@ Copy the environment variables file and fill in the local values:
 cp .env.example .env
 ```
 
-| Variable                 | Description                                                                  | Example                                                                                                       |
-|--------------------------|------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------|
-| **Application metadata** | Used to build the OpenAPI docs.                                              |                                                                                                               |
-| `APP_NAME`               | Title of the API shown in the OpenAPI docs and in the root endpoint.         | `Python Backend Starter`                                                                                      |
-| `APP_SUMMARY`            | Short summary of the API shown in the OpenAPI docs.                          | `Reusable Python backend starter API.`                                                                        |
-| `APP_DESCRIPTION`        | Long description of the API shown in the OpenAPI docs.                       | `Reusable Python backend starter template with Docker, PostgreSQL, Redis, testing, and code quality tooling.` |
-| **Backend**              |                                                                              |                                                                                                               |
-| `DEBUG`                  | Enables or disables debug mode.                                              | `True` / `False`                                                                                              |
-| `ENVIRONMENT`            | Runtime environment of the application.                                      | `development`                                                                                                 |
-| `BACKEND_PORT`           | Port the API listens on inside the container and is published on the host.   | `8000`                                                                                                        |
-| `BACKEND_WORKERS`        | Number of Gunicorn worker processes (production stage).                      | `4`                                                                                                           |
-| `CORS_ALLOW_ORIGINS`     | Allowed origins for CORS requests.                                           | `http://localhost:8000`                                                                                       |
-| `CORS_ALLOW_CREDENTIALS` | Allows credentials to be included in CORS requests.                          | `True` / `False`                                                                                              |
-| **PostgreSQL (dev)**     | Consumed by the `postgres` container.                                        |                                                                                                               |
-| `POSTGRES_USER`          | User created by the `postgres` container.                                    | `postgres`                                                                                                    |
-| `POSTGRES_PASSWORD`      | Password of that user. Required, the image refuses to initialize without it. | `password`                                                                                                    |
-| `POSTGRES_DB`            | Database name created by the `postgres` container.                           | `db`                                                                                                          |
-| `POSTGRES_PORT`          | Host port published for `postgres`.                                          | `5432`                                                                                                        |
-| **Database (dev)**       |                                                                              |                                                                                                               |
-| `DATABASE_URL`           | Connection string used by the application and by Alembic (SQLAlchemy Async). | `postgresql+asyncpg://postgres:password@postgres:5432/db`                                                     |
-| `DB_POOL_SIZE`           | Maximum number of connections kept in the pool.                              | `10`                                                                                                          |
-| `DB_MAX_OVERFLOW`        | Connections allowed above the pool size before the pool blocks.              | `5`                                                                                                           |
-| `DB_POOL_TIMEOUT`        | Seconds to wait for a free connection before failing.                        | `30`                                                                                                          |
-| `DB_ECHO`                | Logs every SQL statement executed by the engine.                             | `false`                                                                                                       |
-| **Redis (dev)**          |                                                                              |                                                                                                               |
-| `REDIS_URL`              | Redis connection URL.                                                        | `redis://redis:6379/0`                                                                                        |
-| `REDIS_PORT`             | Host port published for `redis`.                                             | `6379`                                                                                                        |
-| `REDIS_MAX_CONNECTIONS`  | Maximum size of the Redis connection pool.                                   | `20`                                                                                                          |
-| `REDIS_DECODE_RESPONSES` | Decodes the Redis responses to `str` instead of `bytes`.                     | `true`                                                                                                        |
-| **Test infrastructure**  | Only used by the `test` profile (`docker compose --profile test`).           |                                                                                                               |
-| `POSTGRES_TEST_USER`     | User created by the `postgres-test` container.                               | `postgres_test`                                                                                               |
-| `POSTGRES_TEST_PASSWORD` | Password of that user.                                                       | `password`                                                                                                    |
-| `POSTGRES_TEST_DB`       | Database name created by the `postgres-test` container.                      | `db_test`                                                                                                     |
-| `POSTGRES_TEST_PORT`     | Host port published for `postgres-test`.                                     | `5433`                                                                                                        |
-| `DATABASE_URL_TEST`      | Overrides `DATABASE_URL` inside `backend-test`.                              | `postgresql+asyncpg://postgres_test:password@postgres-test:5432/db_test`                                      |
-| `REDIS_TEST_PORT`        | Host port published for `redis-test`.                                        | `6380`                                                                                                        |
-| `REDIS_URL_TEST`         | Overrides `REDIS_URL` inside `backend-test`.                                 | `redis://redis-test:6379/0`                                                                                   |
+| Variable                 | Description                                                                  | Example                                                                                                                                                                               |
+|--------------------------|------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Application metadata** | Used to build the OpenAPI docs.                                              |                                                                                                                                                                                       |
+| `APP_NAME`               | Title of the API shown in the OpenAPI docs and in the root endpoint.         | `Sturdy Parakeet`                                                                                                                                                                     |
+| `APP_SUMMARY`            | Short summary of the API shown in the OpenAPI docs.                          | `Multi-tenant REST API for sports complexes, availability and bookings.`                                                                                                              |
+| `APP_DESCRIPTION`        | Long description of the API shown in the OpenAPI docs.                       | `Multi-tenant REST API to administer sports complexes and manage the availability and booking of their zones, with authentication, role-based access and asynchronous notifications.` |
+| **Backend**              |                                                                              |                                                                                                                                                                                       |
+| `DEBUG`                  | Enables or disables debug mode.                                              | `True` / `False`                                                                                                                                                                      |
+| `ENVIRONMENT`            | Runtime environment of the application.                                      | `development`                                                                                                                                                                         |
+| `BACKEND_PORT`           | Port the API listens on inside the container and is published on the host.   | `8000`                                                                                                                                                                                |
+| `BACKEND_WORKERS`        | Number of Gunicorn worker processes (production stage).                      | `4`                                                                                                                                                                                   |
+| `CORS_ALLOW_ORIGINS`     | Allowed origins for CORS requests.                                           | `http://localhost:8000`                                                                                                                                                               |
+| `CORS_ALLOW_CREDENTIALS` | Allows credentials to be included in CORS requests.                          | `True` / `False`                                                                                                                                                                      |
+| **PostgreSQL (dev)**     | Consumed by the `postgres` container.                                        |                                                                                                                                                                                       |
+| `POSTGRES_USER`          | User created by the `postgres` container.                                    | `postgres`                                                                                                                                                                            |
+| `POSTGRES_PASSWORD`      | Password of that user. Required, the image refuses to initialize without it. | `password`                                                                                                                                                                            |
+| `POSTGRES_DB`            | Database name created by the `postgres` container.                           | `db`                                                                                                                                                                                  |
+| `POSTGRES_PORT`          | Host port published for `postgres`.                                          | `5432`                                                                                                                                                                                |
+| **Database (dev)**       |                                                                              |                                                                                                                                                                                       |
+| `DATABASE_URL`           | Connection string used by the application and by Alembic (SQLAlchemy Async). | `postgresql+asyncpg://postgres:password@postgres:5432/db`                                                                                                                             |
+| `DB_POOL_SIZE`           | Maximum number of connections kept in the pool.                              | `10`                                                                                                                                                                                  |
+| `DB_MAX_OVERFLOW`        | Connections allowed above the pool size before the pool blocks.              | `5`                                                                                                                                                                                   |
+| `DB_POOL_TIMEOUT`        | Seconds to wait for a free connection before failing.                        | `30`                                                                                                                                                                                  |
+| `DB_ECHO`                | Logs every SQL statement executed by the engine.                             | `false`                                                                                                                                                                               |
+| **Redis (dev)**          |                                                                              |                                                                                                                                                                                       |
+| `REDIS_URL`              | Redis connection URL.                                                        | `redis://redis:6379/0`                                                                                                                                                                |
+| `REDIS_PORT`             | Host port published for `redis`.                                             | `6379`                                                                                                                                                                                |
+| `REDIS_MAX_CONNECTIONS`  | Maximum size of the Redis connection pool.                                   | `20`                                                                                                                                                                                  |
+| `REDIS_DECODE_RESPONSES` | Decodes the Redis responses to `str` instead of `bytes`.                     | `true`                                                                                                                                                                                |
+| **Test infrastructure**  | Only used by the `test` profile (`docker compose --profile test`).           |                                                                                                                                                                                       |
+| `POSTGRES_TEST_USER`     | User created by the `postgres-test` container.                               | `postgres_test`                                                                                                                                                                       |
+| `POSTGRES_TEST_PASSWORD` | Password of that user.                                                       | `password`                                                                                                                                                                            |
+| `POSTGRES_TEST_DB`       | Database name created by the `postgres-test` container.                      | `db_test`                                                                                                                                                                             |
+| `POSTGRES_TEST_PORT`     | Host port published for `postgres-test`.                                     | `5433`                                                                                                                                                                                |
+| `DATABASE_URL_TEST`      | Overrides `DATABASE_URL` inside `backend-test`.                              | `postgresql+asyncpg://postgres_test:password@postgres-test:5432/db_test`                                                                                                              |
+| `REDIS_TEST_PORT`        | Host port published for `redis-test`.                                        | `6380`                                                                                                                                                                                |
+| `REDIS_URL_TEST`         | Overrides `REDIS_URL` inside `backend-test`.                                 | `redis://redis-test:6379/0`                                                                                                                                                           |
 
 > The hosts in `DATABASE_URL` and `REDIS_URL` are the compose service names, so those values only resolve from inside the Docker network. To run the API without Docker, point them at `localhost`.
 
 > The version exposed in the OpenAPI docs is not an environment variable: it is read from the `version` field of `[project]` in `pyproject.toml`.
+
+> Additional secrets for authentication and notifications (`JWT_SECRET`, `EMAIL_VERIFICATION_SECRET`, SMTP credentials and verification URLs) will be added when those modules are implemented.
 
 ---
 
@@ -166,8 +168,8 @@ Run the API directly with Poetry and manage the external services (PostgreSQL, R
 
 **Requirements:**
 - [Python 3.14](https://www.python.org/downloads/release/python-3140/)
-- [PostgreSQL](https://www.postgresql.org/docs/)
-- [Redis](https://redis.io/docs/latest/)
+- [PostgreSQL 16+](https://www.postgresql.org/docs/)
+- [Redis 7+](https://redis.io/docs/latest/)
 
 #### Starting the API
 
@@ -182,7 +184,7 @@ The API will be available at `http://localhost:8000`. The interactive documentat
 
 ### Running the Environment with Docker
 
-Docker Compose starts all the required services simultaneously: the API, PostgreSQL, Redis, etc.
+Docker Compose starts all the required services simultaneously: the API, PostgreSQL and Redis.
 
 **Requirements:**
 - [Docker](https://www.docker.com/), or Docker Engine + Compose plugin
@@ -266,6 +268,8 @@ docker compose --profile test exec postgres-test psql -U postgres_test -d db_tes
 ### Migrations with Alembic
 
 Alembic is used to version the database schema. All migrations are stored in `*/alembic/versions/` and are fully reversible.
+
+> Business migrations enable the `btree_gist` extension because operating hours and bookings use GiST exclusion constraints.
 
 > The following commands can be run both locally and from the Docker container.
 
@@ -364,14 +368,17 @@ AUTH password
 # List all active keys
 KEYS *
 
-# Inspect a specific refresh token
-GET cache:refresh_token:<token>
+# List rate-limit counters
+KEYS rl:*
 
-# Check the remaining TTL of a key
-TTL cache:refresh_token:<token>
+# Inspect a specific rate-limit counter (for example, a user policy)
+GET rl:default:u:<user_id>:<window>
 
-# Manually delete a key (useful during development)
-DEL cache:refresh_token:<token>
+# Check that the counter has an expiration
+TTL rl:default:u:<user_id>:<window>
+
+# Manually delete a counter (useful during development)
+DEL rl:default:u:<user_id>:<window>
 
 # Show general server information
 INFO server
@@ -379,6 +386,8 @@ INFO server
 # Clear database 0 (use with caution in production!)
 FLUSHDB
 ```
+
+> Sturdy Parakeet uses Redis for rate-limit counters in the MVP. It does not store refresh tokens.
 
 ---
 
@@ -388,10 +397,16 @@ The project has three types of tests, organized in separate directories:
 
 ```
 tests/
-├── unit/          # No DB or Redis. Uses FakeRepositories. Very fast.
-├── integration/   # Uses a real PostgreSQL instance. Tests repositories and concurrency.
+├── unit/          # No DB or Redis. Domain rules, use cases and fakes. Very fast.
+├── integration/   # Real PostgreSQL and Redis. Tests repositories, RLS and concurrency.
 └── e2e/           # Full HTTP flows against the running application.
 ```
+
+- **Unit:** domain invariants, slot generation and DST rules, token signing, policies and use cases with fakes.
+- **Integration:** repositories, RLS, exclusion constraints, locking, Outbox recovery and Redis rate limiting.
+- **E2E:** registration, verification, login, memberships, zones, availability and booking flows through the HTTP contract.
+
+RLS, locking, exclusion, concurrency and Outbox tests run against real PostgreSQL, never SQLite.
 
 ### Tests with Docker (recommended)
 
@@ -471,6 +486,8 @@ docker compose --profile test run --rm -e COVERAGE_FILE=tests/.coverage.e2e back
 # Combine tests/.coverage.unit*, tests/.coverage.integration* and tests/.coverage.e2e*
 poetry run coverage combine tests/ # or: make test-coverage-report
 ```
+
+> RNF-006 defines **80%** as the normative coverage target. The current commands and CI configuration enforce 70%; see [TEST_STRATEGY.md](TEST_STRATEGY.md) for the target and the pending alignment.
 
 ---
 
