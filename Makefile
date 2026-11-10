@@ -90,7 +90,7 @@ test-coverage: build-test ## Run all tests with coverage
 		pytest tests \
 		--cov=src \
 		--cov-report=term-missing \
-		--cov-fail-under=70
+		--cov-fail-under=80
 
 # The per-scope coverage files are set with target-specific exports instead of
 # a `VAR=value command` prefix, because that prefix is POSIX shell syntax and

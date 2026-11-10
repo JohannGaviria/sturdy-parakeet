@@ -1,0 +1,101 @@
+name: CD Pipeline
+
+on:
+  workflow_run:
+    workflows: ["Publish Docker Image Pipeline"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to deploy, for example v1.2.3"
+        required: true
+        type: string
+
+concurrency:
+  group: railway-deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_CLI_VERSION: "5.71.0"
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
+
+jobs:
+  deploy:
+    name: Deploy to Railway
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+
+    env:
+      IMAGE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.workflow_run.head_branch }}
+      RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+      RAILWAY_SERVICE_NAME: ${{ secrets.RAILWAY_SERVICE }}
+      RAILWAY_ENVIRONMENT_NAME: ${{ secrets.RAILWAY_ENVIRONMENT || 'production' }}
+
+    steps:
+      - name: Skip pre-release tags
+        id: guard
+        run: |
+          if [[ "$IMAGE_TAG" == *-* ]]; then
+            echo "Pre-release tag ($IMAGE_TAG): skipping production deploy."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node.js
+        if: steps.guard.outputs.skip == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Railway CLI
+        if: steps.guard.outputs.skip == 'false'
+        run: npm install --global @railway/cli@${{ env.RAILWAY_CLI_VERSION }}
+
+      - name: Point service to the published image
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+        run: |
+          railway service source connect \
+            --project "$RAILWAY_PROJECT_ID" \
+            --image "${IMAGE_NAME}:${IMAGE_TAG}" \
+            --service "$RAILWAY_SERVICE_NAME" \
+            --environment "$RAILWAY_ENVIRONMENT_NAME"
+
+      - name: Deploy the published image
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+        run: |
+          railway redeploy --from-source \
+            --project "$RAILWAY_PROJECT_ID" \
+            --service "$RAILWAY_SERVICE_NAME" \
+            --environment "$RAILWAY_ENVIRONMENT_NAME" \
+            --yes
+
+      - name: Health check
+        if: steps.guard.outputs.skip == 'false' && vars.RAILWAY_HEALTHCHECK_URL != ''
+        run: |
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "${{ vars.RAILWAY_HEALTHCHECK_URL }}" || true)
+            echo "Attempt $i: HTTP $code"
+
+            if [[ "$code" == "200" ]]; then
+              exit 0
+            fi
+
+            sleep 10
+          done
+
+          echo "Health check failed after 2 minutes."
+          exit 1
