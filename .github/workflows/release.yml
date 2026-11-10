@@ -1,30 +1,39 @@
-name: Release
+name: Release Pipeline
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - "CI Pipeline"
+    types:
+      - completed
     branches:
       - main
+
+
+permissions:
+  contents: write
 
 concurrency:
   group: release-main
   cancel-in-progress: false
 
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-
 jobs:
   release:
+    name: Create Release
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    if: github.ref == 'refs/heads/main'
+    timeout-minutes: 15
+
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
 
     steps:
-      - name: Checkout full history
+      - name: Checkout successful CI commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN_STURDY_PARAKEET }}
 
@@ -32,23 +41,35 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          # No `cache: npm` here: it resolves package-lock.json, which does not
-          # exist yet because npm init runs in the next step. The install below
-          # pins exact versions anyway, so there is nothing to gain from it.
 
-      - name: Install semantic-release
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "2.4.1"
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install project dependencies
+        run: poetry install --no-interaction --no-root
+
+      - name: Install Semantic Release
         run: |
-          npm init -y --silent
-          npm install --no-save \
-            semantic-release@24 \
-            @semantic-release/commit-analyzer@13 \
-            @semantic-release/release-notes-generator@14 \
-            @semantic-release/changelog@6 \
-            @semantic-release/git@10 \
-            @semantic-release/github@11 \
-            @semantic-release/exec@6
+          npm install -g \
+            semantic-release@25 \
+            @semantic-release/commit-analyzer \
+            @semantic-release/release-notes-generator \
+            @semantic-release/changelog \
+            @semantic-release/git \
+            @semantic-release/github \
+            @semantic-release/exec \
+            conventional-changelog-conventionalcommits
 
-      - name: Run semantic-release
+      - name: Run Semantic Release
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN_STURDY_PARAKEET }}
-        run: npx semantic-release
+        run: semantic-release
