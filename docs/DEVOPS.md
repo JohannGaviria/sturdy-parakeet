@@ -67,7 +67,7 @@ Production
 |------------------------|-------------------------------------------------------|------------------------------------------------------------------------------------------------------------|-------------------------------------|
 | Local development      | Developer command                                     | Docker Compose `dev` profile, pre-commit hooks, local API on port 8000                                     | Working environment                 |
 | Continuous integration | Push or pull request on `develop` / `main`, or manual | Lint, unit, integration and E2E jobs, then a combined coverage report                                      | Green or red CI run                 |
-| Release                | Opt-in: after a successful CI run on `main`           | semantic-release computes the next version, updates `CHANGELOG.md` and `pyproject.toml`, and creates a tag | Git tag `vX.Y.Z` and GitHub release |
+| Release                | Automatic: after a successful CI run on `main`        | semantic-release computes the next version, updates `CHANGELOG.md` and `pyproject.toml`, and creates a tag | Git tag `vX.Y.Z` and GitHub release |
 | Image publication      | Push of a tag matching `v*`                           | Production image is built, pushed to Docker Hub and scanned with Trivy                                     | Versioned container image `vX.Y.Z`  |
 | Deployment             | Successful image publication, or manual dispatch      | Railway service is configured to use the published Docker image, redeployed and checked for readiness      | Release image running in production |
 
@@ -75,7 +75,7 @@ Production
 
 - Docker builds and publishes the production image.
 - Docker Hub stores the versioned image consumed by Railway.
-- CD identifies the exact image using `DOCKERHUB_IMAGE` and `IMAGE_TAG`.
+- CD identifies the exact image using `${DOCKERHUB_USERNAME}/<repository-name>` and `IMAGE_TAG`.
 - Railway receives the image reference and redeploys the service.
 - The health check verifies that the deployed application is ready.
 
@@ -112,7 +112,7 @@ Production
 - The production image is built by the `Publish Docker Image Pipeline` from the `production` target of the Dockerfile.
 - The image is published to Docker Hub with a version tag and scanned with Trivy.
 - Railway runs the published image instead of building the application from the repository source.
-- The image is selected by the CD pipeline using `DOCKERHUB_IMAGE` and the release `IMAGE_TAG`.
+- The image is selected by the CD pipeline as `${DOCKERHUB_USERNAME}/<repository-name>:${IMAGE_TAG}`, where `IMAGE_TAG` is the release tag.
 - The container runs `gunicorn` with `uvicorn_worker.UvicornWorker`.
 - `BACKEND_WORKERS` controls the number of Gunicorn workers.
 - Migrations run on every container start through `entrypoint.sh`; there is no separate migration pipeline.
@@ -145,18 +145,16 @@ Production
 **File:** [.github/workflows/release.yml](../.github/workflows/release.yml)
 
 - **Purpose:** derive the next semantic version from commit messages, create the changelog, update the project version and tag the release.
-- **Trigger:** manual execution through `workflow_dispatch`. Automatic execution after a successful `CI Pipeline` run on `main` is not enabled.
+- **Trigger:** automatic execution after a successful `CI Pipeline` run on `main` (push event), through `workflow_run`.
 - **Permissions:** `contents: write`.
 - **Concurrency:** one release at a time for `main`.
-- **Steps:** checkout the successful CI commit with full history, set up Node.js 24 and Python 3.12, install Poetry and the project dependencies, install semantic-release and run it.
+- **Steps:** checkout the successful CI commit with full history, set up Node.js 24 and Python 3.14, install Poetry and the project dependencies, install semantic-release and run it.
 - **Configuration:** `.releaserc.json` defines `branches: ["main"]`, the `v${version}` tag format and these release rules:
   - breaking change: `major`;
   - `feat`: `minor`;
   - `fix`: `patch`.
 - **Outputs:** `CHANGELOG.md`, the updated version in `pyproject.toml`, a commit `chore(release): vX.Y.Z`, a Git tag and a GitHub release.
-- **Secrets required:** `RELEASE_TOKEN_NAME_PROJECT` (see [GitHub Secrets](#github-secrets)).
-
-> The release pipeline is disabled. Change its trigger to `workflow_run` if you expect releases to execute automatically.
+- **Secrets required:** `RELEASE_TOKEN_STURDY_PARAKEET` (see [GitHub Secrets](#github-secrets)).
 
 ### Publish Docker Image Pipeline
 
@@ -184,7 +182,7 @@ The versioned image published by this pipeline is the same image that the CD pip
 - **Condition:** manual runs always proceed; workflow runs proceed only when the image publication succeeded and was triggered by a push.
 - **Environment:** the job is bound to the GitHub Environment `production`.
 - **Concurrency:** `railway-deploy-production`, without cancelling an in-progress deployment.
-- **Image reference:** `${DOCKERHUB_IMAGE}:${IMAGE_TAG}`, using the same version tag that `publish-image.yml` pushed.
+- **Image reference:** `${DOCKERHUB_USERNAME}/<repository-name>:${IMAGE_TAG}`, using the same version tag that `publish-image.yml` pushed (the tag comes from `workflow_run.head_branch`).
 - **Steps:**
   1. Skip pre-release tags.
   2. Set up Node.js 24.
@@ -214,7 +212,7 @@ railway redeploy \
 
 - **Health check:** runs only when the repository variable `RAILWAY_HEALTHCHECK_URL` is not empty; it expects HTTP 200.
 - **Secrets required:** `RAILWAY_API_TOKEN`, `RAILWAY_PROJECT_ID`, `RAILWAY_SERVICE`, `RAILWAY_ENVIRONMENT` (the environment secret defaults to `production`).
-- **Variables required:** `RAILWAY_HEALTHCHECK_URL` (optional, but recommended) and `DOCKERHUB_IMAGE` (Docker Hub image name used by CD).
+- **Variables required:** `RAILWAY_HEALTHCHECK_URL` (optional, but recommended). The image name is built from the `DOCKERHUB_USERNAME` secret and the repository name.
 
 **Important notes:**
 
@@ -235,16 +233,16 @@ GitHub secrets are for workflows. Runtime configuration is a separate concern an
 
 Configure them in **Settings → Secrets and variables → Actions → Secrets** (repository level) or under the `production` environment.
 
-| Name                         | Used by              | Required                          | Where it comes from                                           | Permissions and notes                                                                                                                                                                 |
-|------------------------------|----------------------|-----------------------------------|---------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `GITHUB_TOKEN`               | CI Pipeline          | Automatic                         | GitHub injects it into every workflow                         | The CI workflow declares `contents: read`. Do not create it manually.                                                                                                                 |
-| `RELEASE_TOKEN_NAME_PROJECT` | Release Pipeline     | Only to enable automatic releases | GitHub Settings → Developer settings → Personal access tokens | Personal Access Token with write access to repository contents. Required because tags pushed with `GITHUB_TOKEN` do not trigger other workflows, which would break image publication. |
-| `DOCKERHUB_USERNAME`         | Publish Docker Image | Yes                               | Docker Hub account username                                   | Also used to build the image name, so the published repository is `${DOCKERHUB_USERNAME}/<repo-name>`.                                                                                |
-| `DOCKERHUB_TOKEN`            | Publish Docker Image | Yes                               | Docker Hub Account settings → Personal access tokens          | Access token with read and write permissions. Use a token, not the account password.                                                                                                  |
-| `RAILWAY_API_TOKEN`          | CD Pipeline          | Yes for deployment                | Railway account settings → Account Tokens                     | Account Token used to authenticate the Railway CLI. This is not a Project Token.                                                                                                      |
-| `RAILWAY_PROJECT_ID`         | CD Pipeline          | Yes for deployment                | Railway project dashboard / project settings                  | Project identifier passed explicitly through `--project` to both deployment commands.                                                                                                 |
-| `RAILWAY_SERVICE`            | CD Pipeline          | Yes for deployment                | Railway project dashboard, service settings                   | Name or identifier of the service that receives the deployment.                                                                                                                       |
-| `RAILWAY_ENVIRONMENT`        | CD Pipeline          | Optional                          | Railway project dashboard, environment settings               | Name or identifier of the target environment. Defaults to `production` when the secret is absent.                                                                                     |
+| Name                            | Used by                           | Required           | Where it comes from                                           | Permissions and notes                                                                                                                                                                 |
+|---------------------------------|-----------------------------------|--------------------|---------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `GITHUB_TOKEN`                  | CI Pipeline                       | Automatic          | GitHub injects it into every workflow                         | The CI workflow declares `contents: read`. Do not create it manually.                                                                                                                 |
+| `RELEASE_TOKEN_STURDY_PARAKEET` | Release Pipeline                  | Yes for releases   | GitHub Settings → Developer settings → Personal access tokens | Personal Access Token with write access to repository contents. Required because tags pushed with `GITHUB_TOKEN` do not trigger other workflows, which would break image publication. |
+| `DOCKERHUB_USERNAME`            | Publish Docker Image, CD Pipeline | Yes                | Docker Hub account username                                   | Also used by CD to build the image name, so the published repository is `${DOCKERHUB_USERNAME}/<repo-name>`.                                                                          |
+| `DOCKERHUB_TOKEN`               | Publish Docker Image              | Yes                | Docker Hub Account settings → Personal access tokens          | Access token with read and write permissions. Use a token, not the account password.                                                                                                  |
+| `RAILWAY_API_TOKEN`             | CD Pipeline                       | Yes for deployment | Railway account settings → Account Tokens                     | Account Token used to authenticate the Railway CLI. This is not a Project Token.                                                                                                      |
+| `RAILWAY_PROJECT_ID`            | CD Pipeline                       | Yes for deployment | Railway project dashboard / project settings                  | Project identifier passed explicitly through `--project` to both deployment commands.                                                                                                 |
+| `RAILWAY_SERVICE`               | CD Pipeline                       | Yes for deployment | Railway project dashboard, service settings                   | Name or identifier of the service that receives the deployment.                                                                                                                       |
+| `RAILWAY_ENVIRONMENT`           | CD Pipeline                       | Optional           | Railway project dashboard, environment settings               | Name or identifier of the target environment. Defaults to `production` when the secret is absent.                                                                                     |
 
 **Railway authentication and identification:**
 
@@ -261,7 +259,6 @@ Configure them in **Settings → Secrets and variables → Actions → Variables
 | Name                      | Used by     | Required | Where it comes from                                                          | Notes                                                                                                       |
 |---------------------------|-------------|----------|------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
 | `RAILWAY_HEALTHCHECK_URL` | CD Pipeline | No       | Public production readiness URL, for example `<PRODUCTION_URL>/health/ready` | If it is empty or missing, the health check step is skipped. Use the readiness endpoint, not `/health`.     |
-| `DOCKERHUB_IMAGE`         | CD Pipeline | Yes      | Docker Hub repository name, for example `username/repository-name`           | Must match the image repository published by `publish-image.yml`. CD appends the release tag to this value. |
 
 ### Runtime Environment Variables
 
@@ -309,32 +306,31 @@ Use this checklist when adopting the template in a new project:
 3. Generate a Railway Account Token and add it to GitHub as `RAILWAY_API_TOKEN`.
 4. Obtain the Railway project identifier and add it as `RAILWAY_PROJECT_ID`.
 5. Add `RAILWAY_SERVICE` and `RAILWAY_ENVIRONMENT` with the target service and environment names or identifiers.
-6. Add the `DOCKERHUB_IMAGE` GitHub variable with the Docker Hub image repository name.
-7. Set the production runtime variables in Railway (`APP_*`, `DEBUG`, `ENVIRONMENT`, `DATABASE_URL`, `REDIS_URL`, CORS and worker settings).
-8. Add the `RAILWAY_HEALTHCHECK_URL` variable pointing at `<PRODUCTION_URL>/health/ready`.
-9. Create the `production` GitHub Environment and add protection rules if manual approval is required.
-10. Add `RELEASE_TOKEN_NAME_PROJECT` and change the trigger in `release.yml` to the commented `workflow_run` block.
-11. Verify CI with a pull request, then let a successful CI run on `main` trigger the release and confirm the tag, the Docker image and the Railway deployment.
-12. Rotate tokens on the project's security schedule and remove tokens that are no longer needed.
+6. Set the production runtime variables in Railway (`APP_*`, `DEBUG`, `ENVIRONMENT`, `DATABASE_URL`, `REDIS_URL`, CORS and worker settings).
+7. Add the `RAILWAY_HEALTHCHECK_URL` variable pointing at `<PRODUCTION_URL>/health/ready`.
+8. Create the `production` GitHub Environment and add protection rules if manual approval is required.
+9. Add `RELEASE_TOKEN_STURDY_PARAKEET` so semantic-release can push the tag and trigger image publication.
+10. Verify CI with a pull request, then let a successful CI run on `main` trigger the release and confirm the tag, the Docker image and the Railway deployment.
+11. Rotate tokens on the project's security schedule and remove tokens that are no longer needed.
 
 ---
 
 ## Troubleshooting
 
-| Symptom                                | Likely cause                                                                           | Fix                                                                                                             |
-|----------------------------------------|----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|
-| Releases never start automatically     | `release.yml` still uses `workflow_dispatch`                                           | Enable the `workflow_run` trigger for `CI Pipeline` on `main` and add `RELEASE_TOKEN_NAME_PROJECT`.             |
-| semantic-release cannot push the tag   | Missing, expired or read-only `RELEASE_TOKEN_NAME_PROJECT`                             | Recreate the PAT with repository contents write access and update the secret.                                   |
-| A tag exists but no image is published | The tag was pushed with `GITHUB_TOKEN`                                                 | Use `RELEASE_TOKEN_NAME_PROJECT` so the tag push triggers `publish-image.yml`.                                  |
-| `:latest` is missing after a release   | The tag is a pre-release (it contains `-`)                                             | Expected behaviour; publish a stable tag to move `:latest`.                                                     |
-| The CD job is skipped                  | Pre-release tag, or the image workflow did not succeed on a push                       | Check the `guard` step and the condition; run the workflow manually with a stable tag if needed.                |
-| Railway authentication fails           | Missing, invalid or expired `RAILWAY_API_TOKEN`                                        | Generate a new Account Token in Railway account settings and update the GitHub secret.                          |
-| Railway cannot identify the project    | Missing or incorrect `RAILWAY_PROJECT_ID`, or the command does not include `--project` | Verify the project identifier and ensure both deployment commands receive `--project "$RAILWAY_PROJECT_ID"`.    |
-| `No linked project found`              | The CLI cannot infer the project from the Account Token                                | Pass the project explicitly with `--project "$RAILWAY_PROJECT_ID"`; do not rely on implicit project resolution. |
-| Railway deploys the old image          | The image tag was not found or the service source was not updated                      | Confirm the tag exists in Docker Hub and inspect the `Point service to the published image` step logs.          |
-| Railway cannot pull the image          | Private Docker Hub repository without registry credentials                             | Make the repository public or configure Docker Hub credentials in the Railway service.                          |
-| `railway service source connect` fails | The pinned Railway CLI is older than `5.71.0` or required identifiers are missing      | Keep `RAILWAY_CLI_VERSION` at `5.71.0` or newer and verify the project, service and environment arguments.      |
-| The health check fails                 | Wrong URL, `/health` used instead of `/health/ready`, or a dependency is down          | Set `RAILWAY_HEALTHCHECK_URL` to the readiness endpoint and inspect Railway logs, PostgreSQL and Redis.         |
-| CI integration or E2E tests fail       | `.env` missing or Docker not available                                                 | Run `cp .env.example .env` and execute the suites through `make` with Docker running.                           |
-| The coverage job fails                 | Combined coverage is below 70%                                                         | Add tests or cover the untested paths before merging.                                                           |
-| Railway reports an unknown service     | `RAILWAY_SERVICE` does not match the target Railway project                            | Verify the service name or identifier and ensure it belongs to `RAILWAY_PROJECT_ID`.                            |
+| Symptom                                | Likely cause                                                                           | Fix                                                                                                                      |
+|----------------------------------------|----------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| Releases never start automatically     | CI on `main` did not succeed, or the release token is missing                          | Confirm the `workflow_run` job ran after a successful push CI on `main` and that `RELEASE_TOKEN_STURDY_PARAKEET` is set. |
+| semantic-release cannot push the tag   | Missing, expired or read-only `RELEASE_TOKEN_STURDY_PARAKEET`                          | Recreate the PAT with repository contents write access and update the secret.                                            |
+| A tag exists but no image is published | The tag was pushed with `GITHUB_TOKEN`                                                 | Use `RELEASE_TOKEN_STURDY_PARAKEET` so the tag push triggers `publish-image.yml`.                                        |
+| `:latest` is missing after a release   | The tag is a pre-release (it contains `-`)                                             | Expected behaviour; publish a stable tag to move `:latest`.                                                              |
+| The CD job is skipped                  | Pre-release tag, or the image workflow did not succeed on a push                       | Check the `guard` step and the condition; run the workflow manually with a stable tag if needed.                         |
+| Railway authentication fails           | Missing, invalid or expired `RAILWAY_API_TOKEN`                                        | Generate a new Account Token in Railway account settings and update the GitHub secret.                                   |
+| Railway cannot identify the project    | Missing or incorrect `RAILWAY_PROJECT_ID`, or the command does not include `--project` | Verify the project identifier and ensure both deployment commands receive `--project "$RAILWAY_PROJECT_ID"`.             |
+| `No linked project found`              | The CLI cannot infer the project from the Account Token                                | Pass the project explicitly with `--project "$RAILWAY_PROJECT_ID"`; do not rely on implicit project resolution.          |
+| Railway deploys the old image          | The image tag was not found or the service source was not updated                      | Confirm the tag exists in Docker Hub and inspect the `Point service to the published image` step logs.                   |
+| Railway cannot pull the image          | Private Docker Hub repository without registry credentials                             | Make the repository public or configure Docker Hub credentials in the Railway service.                                   |
+| `railway service source connect` fails | The pinned Railway CLI is older than `5.71.0` or required identifiers are missing      | Keep `RAILWAY_CLI_VERSION` at `5.71.0` or newer and verify the project, service and environment arguments.               |
+| The health check fails                 | Wrong URL, `/health` used instead of `/health/ready`, or a dependency is down          | Set `RAILWAY_HEALTHCHECK_URL` to the readiness endpoint and inspect Railway logs, PostgreSQL and Redis.                  |
+| CI integration or E2E tests fail       | `.env` missing or Docker not available                                                 | Run `cp .env.example .env` and execute the suites through `make` with Docker running.                                    |
+| The coverage job fails                 | Combined coverage is below 70%                                                         | Add tests or cover the untested paths before merging.                                                                    |
+| Railway reports an unknown service     | `RAILWAY_SERVICE` does not match the target Railway project                            | Verify the service name or identifier and ensure it belongs to `RAILWAY_PROJECT_ID`.                                     |
