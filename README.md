@@ -289,9 +289,9 @@ The integration and E2E tests require the infrastructure services to be running;
 | Integration | `make test-integration`       | `docker compose --profile test run --rm backend-test pytest tests/integration -v`                                          |
 | No DB       | `make test-integration-no-db` | `poetry run pytest tests/integration -m "not db" -v`                                                                       |
 | E2E         | `make test-e2e`               | `docker compose --profile test run --rm backend-test pytest tests/e2e -v`                                                  |
-| Coverage    | `make test-coverage`          | `docker compose --profile test run --rm backend-test pytest tests --cov=src --cov-report=term-missing --cov-fail-under=70` |
+| Coverage    | `make test-coverage`          | `docker compose --profile test run --rm backend-test pytest tests --cov=src --cov-report=term-missing --cov-fail-under=80` |
 
-RNF-006 sets **80%** as the normative coverage target. The current Makefile and CI configuration still enforce 70%; the alignment is tracked in [TEST_STRATEGY.md](docs/TEST_STRATEGY.md), which also contains the full P0 and P1 acceptance test suites.
+RNF-006 sets **80%** as the normative coverage target. The current `make test-coverage` target already enforces 80%, while the combined `make test-coverage-report` target and the CI coverage job still enforce 70%; the alignment is tracked in [TEST_STRATEGY.md](docs/TEST_STRATEGY.md), which also contains the full P0 and P1 acceptance test suites.
 
 For the testing strategy, test structure, coverage target and the full list of commands, see [TEST_STRATEGY.md](docs/TEST_STRATEGY.md).
 
@@ -327,7 +327,7 @@ The delivery pipelines are responsible for the following:
 - `publish-image.yml`: builds the production Docker image, publishes it to Docker Hub and scans it with Trivy.
 - `cd.yml`: configures the Railway service to use the published Docker image, triggers the deployment and checks readiness.
 
-The Release Pipeline is opt-in, and the CD Pipeline skips pre-release tags. Railway deploys the exact image published by the Docker pipeline; it does not rebuild the application from source.
+The Release Pipeline runs automatically after a successful CI run on `main`, and the CD Pipeline skips pre-release tags. Railway deploys the exact image published by the Docker pipeline; it does not rebuild the application from source.
 
 For the complete delivery flow, pipeline configuration, required variables and tokens, and instructions for adapting the template to a new project, see [DEVOPS.md](docs/DEVOPS.md).
 
