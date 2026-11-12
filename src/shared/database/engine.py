@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from src.config import settings
-from src.shared.infrastructure.logging.structlog_logger_adapter import (
+from src.shared.logging.structlog_logger_adapter import (
     StructlogLoggerAdapter,
 )
 

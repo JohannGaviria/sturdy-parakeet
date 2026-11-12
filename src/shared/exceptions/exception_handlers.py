@@ -2,10 +2,10 @@ from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
-from src.shared.infrastructure.logging.structlog_logger_adapter import (
+from src.shared.logging.structlog_logger_adapter import (
     StructlogLoggerAdapter,
 )
-from src.shared.presentation.api.response_schema import ErrorsResponseSchema
+from src.shared.schemas.response_schema import ErrorsResponseSchema
 
 _logger = StructlogLoggerAdapter(__name__)
 

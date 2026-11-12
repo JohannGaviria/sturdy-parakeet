@@ -4,7 +4,7 @@ import redis.asyncio as redis
 from redis.asyncio import Redis
 
 from src.config import settings
-from src.shared.infrastructure.logging.structlog_logger_adapter import (
+from src.shared.logging.structlog_logger_adapter import (
     StructlogLoggerAdapter,
 )
 

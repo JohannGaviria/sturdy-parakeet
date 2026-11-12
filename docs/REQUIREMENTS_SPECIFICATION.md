@@ -32,7 +32,7 @@
     - `MANAGER`: administers zones, schedules, availability and bookings of the complex to which they belong.
     - `OWNER`: registers and administers the complex, its zones, booking policies and memberships; invites, activates/deactivates and cancels invitations; can also cancel bookings.
 
-- **Architecture type:** Modular monolith based on hexagonal architecture (Ports & Adapters) and tactical DDD.
+- **Architecture type:** Modular monolith organized as vertical slices by use case, with tactical DDD inside each slice.
 
 - **Initial technology stack:**
     - Language: Python

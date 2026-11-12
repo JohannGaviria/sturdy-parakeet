@@ -7,10 +7,10 @@ from collections.abc import Callable, Iterator
 import pytest
 import structlog
 
-from src.shared.infrastructure.logging.structlog_configure_logging import (
+from src.shared.logging.structlog_configure_logging import (
     StructlogConfigureLogging,
 )
-from src.shared.infrastructure.logging.structlog_logger_adapter import (
+from src.shared.logging.structlog_logger_adapter import (
     StructlogLoggerAdapter,
 )
 
