@@ -7,19 +7,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.config import settings
-from src.shared.infrastructure.data.database import database
-from src.shared.infrastructure.data.redis_client import redis_client
-from src.shared.infrastructure.logging.structlog_configure_logging import (
+from src.shared.database.engine import database
+from src.shared.exceptions.exception_handlers import exception_handlers
+from src.shared.logging.structlog_configure_logging import (
     StructlogConfigureLogging,
 )
-from src.shared.infrastructure.logging.structlog_logger_adapter import (
+from src.shared.logging.structlog_logger_adapter import (
     StructlogLoggerAdapter,
 )
-from src.shared.presentation.api.correlation_id_middleware import (
+from src.shared.middleware.correlation_id_middleware import (
     CorrelationIdMiddleware,
 )
-from src.shared.presentation.api.exception_handlers import exception_handlers
-from src.shared.presentation.api.response_schema import SuccessResponseSchema
+from src.shared.redis.redis_client import redis_client
+from src.shared.schemas.response_schema import SuccessResponseSchema
 
 _logger = StructlogLoggerAdapter(__name__)
 

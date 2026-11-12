@@ -32,7 +32,7 @@
 
 The suite follows a practical test pyramid:
 
-- **Many unit tests** cover domain rules, use-case orchestration and edge cases without external services.
+- **Many unit tests** cover business rules, slice orchestration and edge cases without external services.
 - **Focused integration tests** verify the guarantees that only a real PostgreSQL and Redis can provide.
 - **A smaller set of end-to-end tests** exercises complete HTTP flows through the application and its real dependencies.
 
@@ -56,12 +56,12 @@ The principles are:
 tests/
 ├── conftest.py                 # Shared fixtures and db-test selection policy
 ├── helpers.py                  # Reachability helpers for test services
-├── unit/                       # No PostgreSQL, Redis or network and adapters
+├── unit/                       # No PostgreSQL, Redis or network; slices tested with fakes
 ├── integration/                # Real PostgreSQL and/or Redis
 └── e2e/                        # Full HTTP flows against the ASGI application
 ```
 
-The repository currently contains the shared infrastructure tests. Module-level tests follow the same structure as the business modules described in [ARCHITECTURE.md](ARCHITECTURE.md).
+The repository currently contains the shared infrastructure tests. Slice-level tests mirror the business slices described in [ARCHITECTURE.md](ARCHITECTURE.md), for example `tests/unit/modules/auth/register/`.
 
 ### Naming, Markers and Selection
 
@@ -76,12 +76,12 @@ The repository currently contains the shared infrastructure tests. Module-level 
 
 #### What is Analyzed?
 
-- Domain entities, value objects, policies and domain services.
+- Business rules inside each slice: entities, value objects, policies and domain services.
 - Temporal rules: slot generation, `[start, end)` intervals, `24:00` conversion, `max_advance_days` as calendar days and DST resolution.
 - Token signing and verification: JWT claims, HMAC verification tokens, constant-time comparisons.
 - Password policy and Argon2id adapter behavior.
-- Use cases with fake repositories, fake unit-of-work, fake clock, fake rate limiter and fake email sender.
-- Error mapping from domain errors to application/API errors.
+- Slice services with fake repositories, fake transactions, fake clock, fake rate limiter and fake email sender.
+- Error mapping from slice errors to API errors.
 
 #### How is it Tested?
 
@@ -95,7 +95,7 @@ Provide fast feedback on business rules, algorithm edge cases and orchestration 
 
 #### What is Analyzed?
 
-- SQLAlchemy repositories, transactions and unit-of-work behavior.
+- SQLAlchemy queries, slice repositories and transaction behavior.
 - Row-Level Security and tenant isolation.
 - Unique, check and exclusion constraints.
 - Composite foreign keys and migrations.
@@ -111,7 +111,7 @@ SQLite is not used as a substitute for these tests. It does not implement RLS, G
 
 #### Objective
 
-Prove that the persistence layer and the database enforce the system's correctness guarantees, including under concurrent access and process failure.
+Prove that slice persistence and the database enforce the system's correctness guarantees, including under concurrent access and process failure.
 
 ### End-to-End (E2E) Tests
 
@@ -130,7 +130,7 @@ Prove that the persistence layer and the database enforce the system's correctne
 
 E2E tests run the FastAPI application through an ASGI client with lifespan enabled, backed by the real test PostgreSQL and Redis instances. Test data is created through the API or through minimal fixtures, and each test cleans up its own records. External email delivery is replaced with a controlled adapter or fake SMTP boundary so the test can assert whether an email was produced without depending on a real mail server.
 
-E2E tests validate the contract and the integration of all layers. They do not replace integration tests for concurrency, RLS or exclusion constraints.
+E2E tests validate the contract and the integration of all slices. They do not replace integration tests for concurrency, RLS or exclusion constraints.
 
 #### Objective
 

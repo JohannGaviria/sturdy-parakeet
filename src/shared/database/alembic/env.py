@@ -7,7 +7,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from src.config import settings
-from src.shared.infrastructure.data.models.base_model import Base
+from src.shared.database.base_model import Base
 
 config = context.config
 

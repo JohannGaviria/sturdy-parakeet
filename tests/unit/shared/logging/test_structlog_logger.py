@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 import structlog
 
-from src.shared.infrastructure.logging.structlog_logger_adapter import (
+from src.shared.logging.structlog_logger_adapter import (
     StructlogLoggerAdapter,
 )
 
