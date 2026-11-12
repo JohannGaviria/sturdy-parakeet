@@ -12,8 +12,8 @@ from src.shared.exceptions.exception_handlers import exception_handlers
 from src.shared.logging.structlog_configure_logging import (
     StructlogConfigureLogging,
 )
-from src.shared.logging.structlog_logger_adapter import (
-    StructlogLoggerAdapter,
+from src.shared.logging.structlog_logger import (
+    StructlogLogger,
 )
 from src.shared.middleware.correlation_id_middleware import (
     CorrelationIdMiddleware,
@@ -21,7 +21,7 @@ from src.shared.middleware.correlation_id_middleware import (
 from src.shared.redis.redis_client import redis_client
 from src.shared.schemas.response_schema import SuccessResponseSchema
 
-_logger = StructlogLoggerAdapter(__name__)
+_logger = StructlogLogger(__name__)
 
 
 async def _is_reachable(ping: Callable[[], Awaitable[bool]]) -> bool:

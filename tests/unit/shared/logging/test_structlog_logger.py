@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 import pytest
 import structlog
 
-from src.shared.logging.structlog_logger_adapter import (
-    StructlogLoggerAdapter,
+from src.shared.logging.structlog_logger import (
+    StructlogLogger,
 )
 
 LEVELS = ("debug", "info", "warning", "error", "critical")
@@ -30,7 +30,7 @@ class TestLevels:
         bound_logger: MagicMock,
         level: str,
     ) -> None:
-        logger = StructlogLoggerAdapter("src.tests")
+        logger = StructlogLogger("src.tests")
 
         getattr(logger, level)("something happened")
 
@@ -42,7 +42,7 @@ class TestLevels:
         bound_logger: MagicMock,
         level: str,
     ) -> None:
-        logger = StructlogLoggerAdapter("src.tests")
+        logger = StructlogLogger("src.tests")
 
         getattr(logger, level)("user_created", user_id="42", source="api")
 
@@ -59,6 +59,6 @@ class TestLevels:
         names: list[Any] = []
         monkeypatch.setattr(structlog, "get_logger", names.append)
 
-        StructlogLoggerAdapter("src.module")
+        StructlogLogger("src.module")
 
         assert names == ["src.module"]

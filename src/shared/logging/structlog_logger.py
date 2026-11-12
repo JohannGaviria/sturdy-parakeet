@@ -1,7 +1,7 @@
 import structlog
 
 
-class StructlogLoggerAdapter:
+class StructlogLogger:
     """Concrete logger backed by structlog.
 
     Wraps a structlog bound-logger so every call is routed through the
@@ -14,7 +14,7 @@ class StructlogLoggerAdapter:
 
     Usage::
 
-        logger = StructlogLoggerAdapter(__name__)
+        logger = StructlogLogger(__name__)
         logger.info("user_created", user_id=str(user.id))
     """
 

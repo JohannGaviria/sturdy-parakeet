@@ -2,12 +2,12 @@ from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
-from src.shared.logging.structlog_logger_adapter import (
-    StructlogLoggerAdapter,
+from src.shared.logging.structlog_logger import (
+    StructlogLogger,
 )
 from src.shared.schemas.response_schema import ErrorsResponseSchema
 
-_logger = StructlogLoggerAdapter(__name__)
+_logger = StructlogLogger(__name__)
 
 
 def exception_handlers(app: FastAPI) -> None:
