@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from src.shared.database.base_model import Base
 
 
-class OutboxStatus(StrEnum):
+class OutboxStatusEnum(StrEnum):
     """Publication status of an outbox event."""
 
     PENDING = "PENDING"
@@ -17,7 +17,7 @@ class OutboxStatus(StrEnum):
     FAILED = "FAILED"
 
 
-class OutboxEvent(Base):
+class OutboxEventModel(Base):
     """Event persisted in the same transaction as the business change."""
 
     __tablename__ = "outbox_events"
@@ -36,7 +36,7 @@ class OutboxEvent(Base):
     payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     status: Mapped[str] = mapped_column(
         String(20),
-        default=OutboxStatus.PENDING,
+        default=OutboxStatusEnum.PENDING,
         nullable=False,
     )
     attempts: Mapped[int] = mapped_column(

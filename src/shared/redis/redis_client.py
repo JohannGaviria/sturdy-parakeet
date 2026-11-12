@@ -4,11 +4,11 @@ import redis.asyncio as redis
 from redis.asyncio import Redis
 
 from src.config import settings
-from src.shared.logging.structlog_logger_adapter import (
-    StructlogLoggerAdapter,
+from src.shared.logging.structlog_logger import (
+    StructlogLogger,
 )
 
-_logger = StructlogLoggerAdapter(__name__)
+_logger = StructlogLogger(__name__)
 
 
 class RedisClient:
