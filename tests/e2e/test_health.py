@@ -6,8 +6,8 @@ from httpx import ASGITransport, AsyncClient
 
 from src.config import settings
 from src.main import app
-from src.shared.infrastructure.data.database import database
-from src.shared.infrastructure.data.redis_client import redis_client
+from src.shared.database.engine import database
+from src.shared.redis.redis_client import redis_client
 
 # The lifespan connects to PostgreSQL and Redis, so these tests need the same
 # infrastructure as the integration suite. The root conftest skips them when it

@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import text
 
-from src.shared.infrastructure.data.database import Database
+from src.shared.database.engine import Database
 
 pytestmark = pytest.mark.db
 

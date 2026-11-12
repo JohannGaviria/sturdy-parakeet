@@ -397,13 +397,13 @@ The project has three types of tests, organized in separate directories:
 
 ```
 tests/
-├── unit/          # No DB or Redis. Domain rules, use cases and fakes. Very fast.
-├── integration/   # Real PostgreSQL and Redis. Tests repositories, RLS and concurrency.
+├── unit/          # No DB or Redis. Business rules, slice services and fakes. Very fast.
+├── integration/   # Real PostgreSQL and Redis. Tests slice repositories, RLS and concurrency.
 └── e2e/           # Full HTTP flows against the running application.
 ```
 
-- **Unit:** domain invariants, slot generation and DST rules, token signing, policies and use cases with fakes.
-- **Integration:** repositories, RLS, exclusion constraints, locking, Outbox recovery and Redis rate limiting.
+- **Unit:** business rules and slice services with fakes, slot generation and DST rules, token signing and policies.
+- **Integration:** slice repositories, RLS, exclusion constraints, locking, Outbox recovery and Redis rate limiting.
 - **E2E:** registration, verification, login, memberships, zones, availability and booking flows through the HTTP contract.
 
 RLS, locking, exclusion, concurrency and Outbox tests run against real PostgreSQL, never SQLite.

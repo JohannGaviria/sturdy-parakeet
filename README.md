@@ -50,7 +50,7 @@ Sturdy Parakeet centralizes the catalog of complexes and zones, operating hours,
 ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)
 ![OpenAPI](https://img.shields.io/badge/OpenAPI-6BA539?style=for-the-badge&logo=openapiinitiative&logoColor=white)
 ![Swagger UI](https://img.shields.io/badge/Swagger_UI-85EA2D?style=for-the-badge&logo=swagger&logoColor=black)
-![Hexagonal Architecture](https://img.shields.io/badge/Hexagonal_Architecture-6A5ACD?style=for-the-badge)
+![Vertical Slice Architecture](https://img.shields.io/badge/Vertical_Slice_Architecture-6A5ACD?style=for-the-badge)
 ![Domain Driven Design](https://img.shields.io/badge/Domain_Driven_Design-8A2BE2?style=for-the-badge)
 
 ---
@@ -181,22 +181,24 @@ The API will be available at `http://localhost:8000`. The interactive documentat
 
 ## Architecture and Decisions
 
-Sturdy Parakeet is a **modular monolith** built with **hexagonal architecture (Ports & Adapters)** and **tactical DDD**. The synchronous API writes in PostgreSQL within a single transaction, while notifications are delivered asynchronously through a transactional Outbox and Celery workers.
+Sturdy Parakeet is a **modular monolith** organized as **vertical slices by use case**, with **tactical DDD** inside each slice. Each slice owns its HTTP contract, validation, business rules, persistence and errors, while cross-cutting concerns live in a shared kernel. The synchronous API writes in PostgreSQL within a single transaction, while notifications are delivered asynchronously through a transactional Outbox and Celery workers.
 
 ```
 src/
 ├── modules/
-│   ├── auth/           # Registration, email verification and login
-│   ├── complexes/      # Complexes, memberships and invitations
-│   ├── zones/          # Zones, operating hours and status
-│   ├── bookings/       # Availability, creation, rescheduling and cancellation
-│   └── notifications/  # Asynchronous email delivery
-└── shared/
+│   ├── auth/           # register/, verify_email/, login/
+│   ├── complexes/      # create_complex/, invite_member/, accept_invitation/, ...
+│   ├── zones/          # create_zone/, list_complexes/, update_zone/, ...
+│   ├── bookings/       # create_booking/, check_availability/, reschedule_booking/, ...
+│   └── notifications/  # send_verification_email/, send_invitation_email/, ...
+└── shared/             # database (UoW/Outbox), redis, logging, security, exceptions, middleware, dependencies, schemas
 ```
 
 **Why a modular monolith:** it keeps business transactions and consistency inside one PostgreSQL database while preserving module boundaries and the option to extract modules later.
 
-For a detailed explanation of the layers, request flow, RLS and Outbox, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+**Why vertical slices:** each use case changes in one place instead of being spread across technical layers, so adding or modifying a flow touches a single slice.
+
+For a detailed explanation of the slices, request flow, RLS and Outbox, see [ARCHITECTURE.md](docs/ARCHITECTURE.md). For the rationale behind adopting vertical slices, see [DECISIONS.md](docs/DECISIONS.md).
 
 ---
 
@@ -276,8 +278,8 @@ tests/
 └── e2e/           # Full HTTP flows against the running application.
 ```
 
-- **Unit** → domain invariants, slot generation and DST rules, token signing, policies and use cases with fakes.
-- **Integration** → repositories, RLS, exclusion constraints, locking, Outbox recovery and Redis rate limiting.
+- **Unit** → business rules and slice services with fakes, slot generation and DST rules, token signing and policies.
+- **Integration** → slice repositories, RLS, exclusion constraints, locking, Outbox recovery and Redis rate limiting.
 - **E2E** → registration, verification, login, memberships, zones, availability and booking flows through the HTTP contract.
 
 The integration and E2E tests require the infrastructure services to be running; the unit tests have no external dependencies. RLS, locking, exclusion, concurrency and Outbox tests run against real PostgreSQL, never SQLite.

@@ -1,6 +1,6 @@
 # Architecture
 
-> Describes the architecture chosen for the system, the internal organization of the project, the path of a typical request through the layers and the boundaries that are consciously assumed.
+> Describes the architecture chosen for the system, the internal organization of the project, the path of a typical request through a vertical slice and the boundaries that are consciously assumed.
 
 ## Table of Contents
 
@@ -8,7 +8,9 @@
 - [Architectural Style and Principles](#architectural-style-and-principles)
 - [Project Organization](#project-organization)
     - [Overall Structure](#overall-structure)
-    - [Architecture Layers](#architecture-layers)
+    - [Slice Anatomy](#slice-anatomy)
+    - [Module-Level Code](#module-level-code)
+    - [Shared Kernel](#shared-kernel)
     - [Project Structure](#project-structure)
 - [Typical Request Flow](#typical-request-flow)
 - [Security and Multi-Tenancy](#security-and-multi-tenancy)
@@ -30,7 +32,7 @@
 
 ## Architecture Overview
 
-Sturdy Parakeet is a **modular monolith** organized around explicit business modules. Each module is implemented with **hexagonal architecture (Ports & Adapters)** and **tactical Domain-Driven Design**, so the domain and application rules do not depend on FastAPI, SQLAlchemy, Redis, Celery or SMTP.
+Sturdy Parakeet is a **modular monolith** organized around explicit business modules. Each module is implemented as a set of **vertical slices**, one per use case. A slice contains everything needed to fulfill that use case: the HTTP route, request and response schemas, orchestration, business rules, data access and its own errors.
 
 The modules are:
 
@@ -42,24 +44,38 @@ The modules are:
 | `bookings`      | Availability, booking creation, rescheduling and cancellation.                       |
 | `notifications` | Asynchronous email delivery for verification, invitations and booking cancellations. |
 
-A **shared kernel** provides cross-cutting infrastructure: configuration, database and Redis clients, logging, correlation IDs, response schemas and exception handling.
+A **shared kernel** provides cross-cutting infrastructure: configuration, database and Redis clients, logging, correlation IDs, security primitives, response schemas, exception handling and the Outbox dispatcher.
 
 ```text
 ┌────────────────────────────────────────────────────────────────────┐
-│ Presentation / API                                                 │
-│ FastAPI routers · Pydantic schemas · auth and rate-limit deps      │
+│ Business modules                                                   │
+│                                                                    │
+│  auth/          complexes/       zones/         bookings/          │
+│  ├── register/  ├── create_.../  ├── create_.../ ├── create_.../   │
+│  ├── verify_.../├── invite_.../  ├── list_.../   ├── check_.../    │
+│  └── login/     └── accept_.../  └── update_.../ └── cancel_.../   │
+│                                                                    │
+│  Each slice: router · schemas · service · repository · errors      │
 ├────────────────────────────────────────────────────────────────────┤
-│ Application                                                        │
-│ Use cases · Dtos                                                   │
-├────────────────────────────────────────────────────────────────────┤
-│ Domain                                                             │
-│ Entities · value objects · policies · domain services · ports ·    │
-│ unit of work                                                       │
-├────────────────────────────────────────────────────────────────────┤
-│ Infrastructure                                                     │
-│ SQLAlchemy repositories · Redis · Celery · SMTP · security ·       │
-│ Adapters                                                           │
+│ Shared kernel                                                      │
+│ Config · PostgreSQL · Redis · logging · security · Outbox · API    │
 └────────────────────────────────────────────────────────────────────┘
+```
+
+A request crosses one slice from top to bottom; it does not travel through horizontal layers:
+
+```text
+HTTP request
+    │
+    ▼
+┌──────────────────── Slice: bookings/create_booking ────────────────────┐
+│ router.py ──► schemas.py ──► service.py ──► repository.py ──► Postgres │
+│                                  │                          └── Outbox │
+│                                  └── business rules                     │
+└────────────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+HTTP response
 ```
 
 The synchronous write path is transactional. Side effects that do not need to block the response, such as sending an email, are recorded in the **transactional Outbox** and published after the commit:
@@ -68,13 +84,13 @@ The synchronous write path is transactional. Side effects that do not need to bl
 HTTP request
     │
     ▼
-Module use case ──► Unit of Work ──► PostgreSQL transaction
-    │                                   ├── business writes
-    │                                   └── outbox_events row
+Slice service ──► shared transaction ──► PostgreSQL transaction
+    │                                     ├── business writes
+    │                                     └── outbox_events row
     ▼
 HTTP response
 
-Outbox dispatcher ──► Celery / Redis broker ──► notification worker ──► SMTP
+Outbox dispatcher ──► Celery / Redis broker ──► notification slice ──► SMTP
 ```
 
 This keeps the API responsive while preserving the guarantee that no event is published for a transaction that was rolled back.
@@ -83,14 +99,17 @@ This keeps the API responsive while preserving the guarantee that no event is pu
 
 ## Architectural Style and Principles
 
-1. **The domain is independent.** Domain objects contain business invariants and time rules without importing framework or persistence code.
-2. **Ports belong to the application.** Repositories, clocks, token signers, email senders and rate-limit stores are defined as interfaces owned by the use cases.
-3. **Adapters live in infrastructure.** SQLAlchemy, Redis, Celery, SMTP and cryptographic implementations are replaceable adapters.
-4. **Dependencies point inward.** Presentation depends on application; application depends on domain; infrastructure implements application ports; domain depends on nothing external.
+1. **Organize by use case, not by technical layer.** Each use case gets its own slice with the code it needs, instead of spreading it across `domain`, `application`, `infrastructure` and `presentation` folders.
+2. **Each slice is an end-to-end owner.** The route, validation, orchestration, business rules, persistence queries and error mapping for a use case live together and change together.
+3. **Slices are independent.** A slice does not import another slice's internals. Shared code is extracted only when reuse is proven, not in anticipation of it.
+4. **Cross-module collaboration uses explicit contracts.** Modules interact through public slice contracts, shared value objects or events, never through another module's internal repositories or schemas.
 5. **The database is the consistency authority.** Uniqueness, non-overlap, tenancy and referential integrity are enforced with PostgreSQL constraints, not only with in-memory checks.
 6. **Tenant context is explicit.** Every tenant-scoped transaction sets `app.user_id` before querying, and RLS policies restrict rows by complex.
 7. **Asynchronous delivery is at-least-once.** Outbox publication and email workers are designed to tolerate duplicates instead of pretending to provide exactly-once delivery.
-8. **Failures are observable and boring.** Expected failures become typed domain errors mapped to stable HTTP responses; unexpected failures return a generic `500` and are logged with structured context.
+8. **Failures are observable and boring.** Expected failures become typed slice errors mapped to stable HTTP responses; unexpected failures return a generic `500` and are logged with structured context.
+9. **Duplication is acceptable when it preserves independence.** Two slices may contain similar queries or validation. A shared abstraction is introduced only after the duplication is real and stable.
+
+The rationale for replacing hexagonal architecture with vertical slices is recorded in [DECISIONS.md](DECISIONS.md) (ADR-001).
 
 ---
 
@@ -98,16 +117,83 @@ This keeps the API responsive while preserving the guarantee that no event is pu
 
 ### Overall Structure
 
-The codebase is divided into business modules under `src/modules` and a shared kernel under `src/shared`. Modules do not import each other's infrastructure or presentation layers. Cross-module collaboration happens through application ports, shared domain value objects or events.
+The codebase is divided into business modules under `src/modules` and a shared kernel under `src/shared`. Each module is a folder of slices plus optional module-level files for code that several slices of the same module genuinely reuse.
 
-### Architecture Layers
+Modules do not import each other's internal slices. Cross-module collaboration happens through public contracts, shared value objects or events.
 
-| Layer          | Contents                                                                                                   | Allowed dependencies                              |
-|----------------|------------------------------------------------------------------------------------------------------------|---------------------------------------------------|
-| Domain         | Entities, value objects, policies, domain services, domain errors, ports, unit-of-work contracts.          | Standard library only.                            |
-| Application    | Use cases, DTOs, orchestration.                                                                            | Domain.                                           |
-| Infrastructure | Repository implementations, transactions, Redis adapters, Celery tasks, SMTP clients, security primitives. | Application, domain, shared infrastructure.       |
-| Presentation   | FastAPI routers, request/response schemas, dependencies, exception mapping.                                | Application, domain errors, shared API utilities. |
+### Slice Anatomy
+
+A slice is named after the use case in `snake_case` and follows this structure:
+
+```text
+src/modules/bookings/create_booking/
+├── router.py        # FastAPI route, dependencies and HTTP status codes
+├── schemas.py       # Request and response Pydantic models
+├── service.py       # Slice orchestration and business rules
+├── repository.py    # SQLAlchemy queries and writes owned by this slice
+└── errors.py        # Slice-specific errors and their HTTP mapping
+```
+
+| File            | Responsibility                                                                 |
+|-----------------|--------------------------------------------------------------------------------|
+| `router.py`     | Declares the endpoint, injects dependencies and calls the slice service.        |
+| `schemas.py`    | Validates the HTTP contract; rejects additional fields and invalid types.      |
+| `service.py`    | Applies business rules, opens the transaction and coordinates persistence.     |
+| `repository.py` | Loads and writes the data needed by this use case through SQLAlchemy.          |
+| `errors.py`     | Defines typed failures that the shared exception handler maps to HTTP errors.  |
+
+Optional files are added only when the slice needs them, for example `policies.py` for time or cancellation rules, `models.py` for a slice-owned ORM mapping, or `tasks.py` for a task-driven notification slice.
+
+Dependency rules:
+
+- A slice may import its module's top-level files and the global `src/shared/` kernel.
+- A slice must not import another slice, even inside the same module.
+- A slice must not import another module's internal code.
+- Framework code (FastAPI, SQLAlchemy, Celery, Redis, SMTP) stays at the edges of the slice; it is not hidden behind layer-wide abstractions.
+
+### Module-Level Code
+
+When several slices of the same module need the same concept, it lives directly in the module folder, alongside the slice folders:
+
+```text
+src/modules/bookings/
+├── create_booking/
+├── check_availability/
+├── reschedule_booking/
+├── ...
+├── models.py        # ORM mappings used by several booking slices
+├── policies.py      # Shared cancellation and advance-notice rules
+├── value_objects.py # Booking-specific immutable values
+└── errors.py        # Errors shared by booking slices
+```
+
+These files are not a layer and there is no `shared/` subfolder. They are a small, deliberate exception to slice independence, and they must not become a dumping ground for generic helpers.
+
+### Shared Kernel
+
+The global `src/shared/` kernel contains only cross-cutting infrastructure:
+
+```text
+src/shared/
+├── database/
+│   ├── engine.py          # Async engine, sessions and pool
+│   ├── base_model.py      # Shared SQLAlchemy base/model helpers
+│   ├── uow.py             # Unit of work and transaction boundary
+│   ├── outbox_model.py    # outbox_events ORM model
+│   └── alembic/           # Migrations
+├── redis/
+│   ├── redis_client.py    # Async Redis client and pool
+│   └── rate_limiting.py   # Rate-limit counters and policies
+├── logging/               # Structlog configuration and wrapper
+├── security/              # Password hashing, JWT and HMAC primitives
+├── outbox/                # Outbox dispatcher and Celery publishing
+├── exceptions/            # Base error types and global exception handlers
+├── middleware/            # Correlation ID middleware
+├── dependencies/          # Authentication and rate-limit dependencies
+└── schemas/               # Common response envelopes
+```
+
+The kernel does not contain business rules. If a helper starts to encode a specific use case, it belongs in that slice instead.
 
 ### Project Structure
 
@@ -117,44 +203,60 @@ src/
 ├── config.py                       # Environment-backed settings
 ├── modules/
 │   ├── auth/
-│   │   ├── domain/
-│   │   ├── application/
-│   │   ├── infrastructure/
-│   │   └── presentation/
+│   │   ├── register/
+│   │   ├── verify_email/
+│   │   ├── login/
+│   │   ├── models.py                 # User model
+│   │   ├── security.py               # Token primitives
+│   │   └── errors.py                 # Shared auth errors
 │   ├── complexes/
-│   │   ├── domain/
-│   │   ├── application/
-│   │   ├── infrastructure/
-│   │   └── presentation/
+│   │   ├── create_complex/
+│   │   ├── invite_member/
+│   │   ├── accept_invitation/
+│   │   ├── update_membership/
+│   │   ├── cancel_invitation/
+│   │   ├── models.py                 # Complex/membership models
+│   │   ├── policies.py               # Complex and invitation policies
+│   │   └── errors.py                 # Shared complex errors
 │   ├── zones/
-│   │   ├── domain/
-│   │   ├── application/
-│   │   ├── infrastructure/
-│   │   └── presentation/
+│   │   ├── create_zone/
+│   │   ├── list_complexes/
+│   │   ├── update_zone/
+│   │   ├── change_zone_status/
+│   │   ├── replace_schedule/
+│   │   ├── models.py                 # Zone, schedule and status models
+│   │   ├── policies.py               # Zone and schedule policies
+│   │   └── errors.py                 # Shared zone errors
 │   ├── bookings/
-│   │   ├── domain/
-│   │   ├── application/
-│   │   ├── infrastructure/
-│   │   └── presentation/
+│   │   ├── create_booking/
+│   │   ├── check_availability/
+│   │   ├── reschedule_booking/
+│   │   ├── cancel_booking/
+│   │   ├── list_my_bookings/
+│   │   ├── list_complex_bookings/
+│   │   ├── update_booking_policies/
+│   │   ├── cancel_complex_booking/
+│   │   ├── models.py                 # Booking model
+│   │   ├── policies.py               # Booking and cancellation policies
+│   │   ├── value_objects.py          # Booking value objects
+│   │   └── errors.py                 # Shared booking errors
 │   └── notifications/
-│       ├── domain/
-│       ├── application/
-│       ├── infrastructure/
-│       └── presentation/
+│       ├── send_verification_email/
+│       ├── send_invitation_email/
+│       ├── send_booking_cancelled_email/
+│       ├── email_client.py           # SMTP client
+│       ├── templates.py              # Email templates
+│       └── errors.py                 # Shared notification errors
 └── shared/
-    ├── domain/
-    ├── application/
-    ├── infrastructure/
-    │   ├── alembic/                # Migrations
-    │   ├── models/                 # Shared SQLAlchemy base/model helpers
-    │   ├── logging/                # Structlog configuration and wrapper
-    │   ├── database.py             # Async engine, sessions and pool
-    │   └── redis_client.py         # Async Redis client and pool
-    └── presentation/
-    │   ├── api/
-    │   ├── exceptions/             # Global exception handlers
-    │   ├── middleware/             # Correlation ID middleware
-    │   └── schemas/                # Common response envelopes
+    ├── database/                   # Engine, sessions, UoW, outbox model and migrations
+    ├── redis/                      # Redis client and rate limiting
+    ├── logging/
+    ├── security/
+    ├── outbox/
+    ├── exceptions/
+    ├── middleware/
+    ├── dependencies/
+    └── schemas/
 ```
 
 The repository currently contains the shared kernel and the application bootstrap. The `modules/*` tree describes the target organization for the business capabilities defined in the requirements specification.
@@ -163,18 +265,18 @@ The repository currently contains the shared kernel and the application bootstra
 
 ## Typical Request Flow
 
-The following walkthrough uses `POST /api/v1/complexes/{complex_id}/zones/{zone_id}/bookings` as a representative write request.
+The following walkthrough uses `POST /api/v1/complexes/{complex_id}/zones/{zone_id}/bookings` as a representative write request handled by the `bookings/create_booking` slice.
 
 1. **Uvicorn and FastAPI** receive the request. CORS is evaluated first, then `CorrelationIdMiddleware` reuses or generates `X-Correlation-ID`, binds it to the Structlog context and returns it in the response.
 2. **Rate limiting** runs after optional authentication. It builds a policy key from the user ID, the SHA-256 hash of the normalized email, or the client IP. The counter increment and TTL assignment are executed atomically in Redis. If Redis is unavailable, the request follows the fail-open behavior described below.
 3. **Authentication** validates the bearer token: signature, `exp`, `iss`, `aud` and `type = "access"`. The user identity comes only from the token's `sub`; no identity is accepted from the body.
-4. **Input validation** runs in the presentation layer. Additional fields, wrong types, invalid identifiers, missing time zones and malformed timestamps are rejected before the use case starts.
-5. **The use case** opens a unit of work and a database transaction. The transaction sets the RLS context (`app.user_id`) before any tenant-scoped query.
-6. **Repositories** load the complex, zone, operating hours and policies through RLS-protected queries. The use case resolves the local slot, applies advance-notice and policy rules, and checks idempotency.
+4. **The slice router and schemas** validate the input. Additional fields, wrong types, invalid identifiers, missing time zones and malformed timestamps are rejected before the service starts.
+5. **The slice service** opens a database transaction through the shared session helper. The transaction sets the RLS context (`app.user_id`) before any tenant-scoped query.
+6. **The slice repository** loads the complex, zone, operating hours and policies through RLS-protected queries. The service resolves the local slot, applies advance-notice and policy rules, and checks idempotency.
 7. **Concurrency control** is delegated to PostgreSQL: the zone row is locked with `FOR SHARE`, an advisory transaction lock protects the per-client limit, and the exclusion constraint on `(zone_id, tstzrange(starts_at, ends_at))` prevents overlap. A `SECURITY DEFINER` trigger verifies that the zone is still `ACTIVE` at insert time.
 8. **Business writes and Outbox rows** are committed in the same transaction. A booking by a client does not publish an event; a staff cancellation inserts `booking.cancelled` in the same transaction as the status update.
-9. **The response** is mapped from the domain result. Domain errors become the documented HTTP status and error code; unexpected errors are logged by the global handler and returned as a generic `500` without internals.
-10. **After the commit**, the Outbox dispatcher selects pending rows with `FOR UPDATE SKIP LOCKED`, publishes them to the Celery/Redis broker, marks them `PUBLISHED` on success and applies backoff on failure. Notification workers consume the events and send emails.
+9. **The response** is mapped from the slice result. Slice errors become the documented HTTP status and error code; unexpected errors are logged by the global handler and returned as a generic `500` without internals.
+10. **After the commit**, the Outbox dispatcher selects pending rows with `FOR UPDATE SKIP LOCKED`, publishes them to the Celery/Redis broker, marks them `PUBLISHED` on success and applies backoff on failure. Notification slices consume the events and send emails.
 
 ---
 
@@ -191,13 +293,13 @@ Tenant isolation is enforced in PostgreSQL with Row-Level Security. Every tenant
 - The catalog and availability queries expose only public columns and active zones.
 - Client data used by staff is read through a restricted view (`complex_booking_clients`) rather than through direct access to `users`.
 
-RLS is a defense-in-depth control. The application also filters by tenant and user, so a query is safe only when both layers agree.
+RLS is a defense-in-depth control. Each slice also filters by tenant and user, so a query is safe only when both controls agree.
 
 ### Connection Pool Hygiene
 
 `app.user_id` is transaction-local. It must be set with transaction scope (`SET LOCAL`) and must not leak to the next request that reuses the same pooled connection.
 
-- The context is established when the unit of work starts.
+- The context is established when the slice service starts its transaction.
 - The context is cleared or rolled back with the transaction.
 - No session-level setting survives a returned connection.
 - Integration tests explicitly reuse a pooled connection across two users and assert that the second user cannot see the first user's rows.
@@ -225,7 +327,7 @@ These functions are narrowly scoped, use a fixed `search_path = pg_catalog, publ
 
 ### Transaction Boundaries
 
-Each use case defines a single unit of work. Multi-row operations that must be all-or-nothing run in one transaction:
+Each slice defines a single transaction. Multi-row operations that must be all-or-nothing run in one transaction:
 
 - Registration plus the verification-email Outbox row.
 - Complex creation plus the owner membership plus booking policies.
@@ -273,7 +375,7 @@ The half-open `[start, end)` interval is deliberate: it allows contiguous bookin
 - `next_attempt_at` enables exponential backoff and recovery of stuck events.
 - `attempts` and `last_error` provide traceability without sensitive data.
 - After the configured retries, the event is marked `FAILED`.
-- Delivery is at-least-once. Consumers must tolerate duplicates; notification tasks therefore check the current database state and produce idempotent email content.
+- Delivery is at-least-once. Consumers must tolerate duplicates; notification slices therefore check the current database state and produce idempotent email content.
 
 If the process crashes after the commit and before publishing, the event remains in `outbox_events` and is recovered by the dispatcher.
 
@@ -298,7 +400,7 @@ The system distinguishes between failures that affect correctness and failures t
 - **PostgreSQL unavailable:** the request fails with a `5xx` response. No business invariant can be guaranteed without the database.
 - **Redis unavailable:** the request continues. Redis is used for rate limiting, not as the source of truth for bookings or tenancy.
 - **Outbox dispatcher or broker unavailable:** the business transaction still commits and the event stays pending until it is published.
-- **SMTP unavailable:** the notification task retries with backoff according to the email rules; the business operation is not rolled back.
+- **SMTP unavailable:** the notification slice retries with backoff according to the email rules; the business operation is not rolled back.
 
 ### Redis Unavailability Behavior
 
@@ -315,7 +417,9 @@ Redis is an abuse-control dependency, not a correctness dependency. During a Red
 
 ## Known Boundaries and Assumptions
 
-- **Modular monolith, not microservices.** Modules are separated by code boundaries and transactions, not by network calls. A future split would require extracting modules and revisiting distributed consistency.
+- **Modular monolith, not microservices.** Modules and slices are separated by code boundaries and transactions, not by network calls. A future split would require extracting modules and revisiting distributed consistency.
+- **Vertical slices, not horizontal layers.** There are no `domain`, `application`, `infrastructure` or `presentation` folders. Framework code stays at the edge of each slice, and the shared kernel holds only cross-cutting infrastructure.
+- **Controlled duplication across slices.** Slices may repeat small queries or validation to stay independent. Shared abstractions are introduced only when reuse is proven, so the codebase may contain deliberate duplication.
 - **Single primary database.** The MVP assumes one PostgreSQL primary and one Redis deployment. Cross-region replication, failover orchestration and multi-primary writes are out of scope.
 - **At-least-once events.** Outbox publication and email delivery may duplicate. Consumers tolerate duplicates and emails carry idempotent content; this is documented rather than hidden.
 - **Rate limiting is not guaranteed during a Redis outage.** This is the explicit fail-open trade-off described above.
