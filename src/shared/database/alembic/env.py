@@ -7,7 +7,9 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from src.config import settings
+from src.modules.auth.models import UserModel  # noqa: F401
 from src.shared.database.base_model import Base
+from src.shared.database.outbox_model import OutboxEventModel  # noqa: F401
 
 config = context.config
 
