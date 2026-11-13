@@ -45,6 +45,7 @@ def exception_handlers(app: FastAPI) -> None:
             content=jsonable_encoder(
                 ErrorsResponseSchema(
                     message="An unexpected error occurred while processing the request.",
+                    code="INTERNAL_ERROR",
                 ),
                 exclude_none=True,
             ),
